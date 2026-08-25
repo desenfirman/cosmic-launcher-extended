@@ -78,6 +78,8 @@ pub struct Args {
 pub enum LauncherTasks {
     #[clap(about = "Toggle the launcher and switch to the alt-tab view")]
     AltTab,
+    #[clap(about = "Search open windows by title")]
+    WindowSearch,
     #[clap(about = "Toggle the launcher and switch to the alt-tab view")]
     ShiftAltTab,
     #[clap(about = "Start the launcher with an input")]
@@ -157,6 +159,7 @@ pub struct CosmicLauncher {
     menu: Option<(u32, Vec<ContextOption>)>,
     cursor_position: Option<Point<f32>>,
     focused: usize,
+    window_search: bool,
     last_hide: Instant,
     alt_tab: bool,
     alt_tab_released: bool,
@@ -268,6 +271,7 @@ impl CosmicLauncher {
         self.input_value.clear();
         self.focused = 0;
         self.alt_tab = false;
+        self.window_search = false;
         self.alt_tab_released = false;
         self.queue.clear();
         self.hand_over.clear();
@@ -396,8 +400,8 @@ async fn try_get_gpu_envs(gpu: GpuPreference) -> Option<HashMap<String, String>>
 impl cosmic::Application for CosmicLauncher {
     type Message = Message;
     type Executor = cosmic::executor::single::Executor;
+    const APP_ID: &'static str = "com.mis.CosmicLauncherTyped";
     type Flags = Args;
-    const APP_ID: &'static str = "com.system76.CosmicLauncher";
 
     fn init(mut core: Core, _flags: Args) -> (Self, Task<Message>) {
         core.set_app_type(cosmic::core::AppType::System);
@@ -416,6 +420,7 @@ impl cosmic::Application for CosmicLauncher {
             focused: 0,
             last_hide: Instant::now(),
             alt_tab: false,
+            window_search: false,
             alt_tab_released: false,
             window_id: SurfaceId::unique(),
             queue: VecDeque::new(),
@@ -605,6 +610,9 @@ impl cosmic::Application for CosmicLauncher {
                         }
                     }
                     pop_launcher::Response::Update(mut list) => {
+                        if self.window_search {
+                            list.retain(|item| item.window.is_some());
+                        }
                         if self.alt_tab && list.is_empty() {
                             return self.hide();
                         }
@@ -857,6 +865,11 @@ impl cosmic::Application for CosmicLauncher {
                 }
 
                 match cmd {
+                    LauncherTasks::WindowSearch => {
+                        self.window_search = true;
+                        self.alt_tab = false;
+                        self.request(launcher::Request::Search(String::new()));
+                    }
                     LauncherTasks::AltTab => {
                         if self.alt_tab {
                             if self.surface_state == SurfaceState::WaitingToBeShown
