@@ -482,10 +482,10 @@ impl cosmic::Application for CosmicLauncher {
                 }
             }
             Message::Activate(i) => {
-                let alt_tab = self.alt_tab;
+                let close_after_activate = self.alt_tab || self.window_search;
                 if let Some(item) = self.launcher_items.get(i.unwrap_or(self.focused)) {
                     self.request(launcher::Request::Activate(item.id));
-                    if alt_tab {
+                    if close_after_activate {
                         return self.hide();
                     }
                 } else {
