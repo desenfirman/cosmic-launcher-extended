@@ -866,6 +866,8 @@ impl cosmic::Application for CosmicLauncher {
 
                 match cmd {
                     LauncherTasks::WindowSearch => {
+                        self.input_value.clear();
+                        self.focused = 0;
                         self.window_search = true;
                         self.alt_tab = false;
                         self.request(launcher::Request::Search(String::new()));
