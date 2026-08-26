@@ -76,11 +76,14 @@ pub struct Args {
 
 #[derive(Debug, Serialize, Deserialize, Clone, clap::Subcommand)]
 pub enum LauncherTasks {
+    #[clap(about = "Search applications and PATH commands")]
+    Combi,
+    #[clap(about = "Search open windows by title")]
+    Windows,
     #[clap(about = "Toggle the launcher and switch to the alt-tab view")]
     AltTab,
     #[clap(about = "Search open windows by title")]
     WindowSearch,
-    #[clap(about = "Toggle the launcher and switch to the alt-tab view")]
     ShiftAltTab,
     #[clap(about = "Start the launcher with an input")]
     Input { input: Option<String> },
@@ -396,11 +399,13 @@ async fn try_get_gpu_envs(gpu: GpuPreference) -> Option<HashMap<String, String>>
     }
     .map(|gpu| gpu.environment)
 }
-
 impl cosmic::Application for CosmicLauncher {
     type Message = Message;
     type Executor = cosmic::executor::single::Executor;
-    const APP_ID: &'static str = "com.mis.CosmicLauncherTyped";
+    #[cfg(feature = "windows-mode")]
+    const APP_ID: &'static str = "com.mis.CosmicLauncherWindows";
+    #[cfg(not(feature = "windows-mode"))]
+    const APP_ID: &'static str = "com.mis.CosmicLauncherCombi";
     type Flags = Args;
 
     fn init(mut core: Core, _flags: Args) -> (Self, Task<Message>) {
@@ -614,9 +619,10 @@ impl cosmic::Application for CosmicLauncher {
                         }
                     }
                     pop_launcher::Response::Update(mut list) => {
-                        if self.window_search {
-                            list.retain(|item| item.window.is_some());
-                        }
+                        #[cfg(feature = "windows-mode")]
+                        list.retain(|item| item.window.is_some());
+                        #[cfg(not(feature = "windows-mode"))]
+                        list.retain(|item| item.window.is_none());
                         if self.alt_tab && list.is_empty() {
                             return self.hide();
                         }
@@ -867,9 +873,15 @@ impl cosmic::Application for CosmicLauncher {
                 if self.surface_state == SurfaceState::Hidden {
                     self.surface_state = SurfaceState::WaitingToBeShown;
                 }
-
                 match cmd {
-                    LauncherTasks::WindowSearch => {
+                    LauncherTasks::Combi => {
+                        self.input_value.clear();
+                        self.focused = 0;
+                        self.window_search = false;
+                        self.alt_tab = false;
+                        self.request(launcher::Request::Search(String::new()));
+                    }
+                    LauncherTasks::Windows | LauncherTasks::WindowSearch => {
                         self.input_value.clear();
                         self.focused = 0;
                         self.window_search = true;
@@ -886,7 +898,6 @@ impl cosmic::Application for CosmicLauncher {
                             }
                             return self.update(Message::AltTab);
                         }
-
                         self.alt_tab = true;
                         self.alt_tab_released = false;
                         self.request(launcher::Request::Search(String::new()));
@@ -902,7 +913,6 @@ impl cosmic::Application for CosmicLauncher {
                             }
                             return self.update(Message::ShiftAltTab);
                         }
-
                         self.alt_tab = true;
                         self.alt_tab_released = false;
                         self.request(launcher::Request::Search(String::new()));

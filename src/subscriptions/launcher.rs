@@ -51,7 +51,7 @@ fn client_request<'a>(
     if client.is_none() {
         *client = match pop_launcher_service::IpcClient::new_with_args(Args {
             max_files: 20,
-            max_open: 99,
+            max_open: 5000,
             max_search: 20,
         }) {
             Ok((new_client, responses)) => {

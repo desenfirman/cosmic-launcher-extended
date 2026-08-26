@@ -1,0 +1,8 @@
+(
+    name: "Desktop Entries",
+    description: "Query applications by their .desktop entries",
+    bin: (path: "/usr/lib/pop-launcher/plugins/desktop_entries/desktop-entries"),
+    icon: Name("new-window-symbolic"),
+    history: true,
+    query: (persistent: true),
+)
