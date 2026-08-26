@@ -487,7 +487,6 @@ impl cosmic::Application for CosmicLauncher {
                     if self.window_search {
                         self.input_value.clear();
                         self.focused = 0;
-                        self.request(launcher::Request::Search(String::new()));
                     }
                     self.request(launcher::Request::Activate(item.id));
                     if close_after_activate {
