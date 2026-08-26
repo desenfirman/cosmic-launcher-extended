@@ -402,10 +402,7 @@ async fn try_get_gpu_envs(gpu: GpuPreference) -> Option<HashMap<String, String>>
 impl cosmic::Application for CosmicLauncher {
     type Message = Message;
     type Executor = cosmic::executor::single::Executor;
-    #[cfg(feature = "windows-mode")]
-    const APP_ID: &'static str = "com.mis.CosmicLauncherWindows";
-    #[cfg(not(feature = "windows-mode"))]
-    const APP_ID: &'static str = "com.mis.CosmicLauncherCombi";
+    const APP_ID: &'static str = "com.mis.CosmicLauncherExtended";
     type Flags = Args;
 
     fn init(mut core: Core, _flags: Args) -> (Self, Task<Message>) {
@@ -619,10 +616,11 @@ impl cosmic::Application for CosmicLauncher {
                         }
                     }
                     pop_launcher::Response::Update(mut list) => {
-                        #[cfg(feature = "windows-mode")]
-                        list.retain(|item| item.window.is_some());
-                        #[cfg(not(feature = "windows-mode"))]
-                        list.retain(|item| item.window.is_none());
+                        if self.window_search || self.alt_tab {
+                            list.retain(|item| item.window.is_some());
+                        } else {
+                            list.retain(|item| item.window.is_none());
+                        }
                         if self.alt_tab && list.is_empty() {
                             return self.hide();
                         }

@@ -7,8 +7,6 @@ rust-version = "1.93"
 
 [features]
 default = []
-windows-mode = []
-combi-mode = []
 wgpu = ["libcosmic/wgpu"]
 console = ["tokio/tracing"]
 [dependencies]
