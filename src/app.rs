@@ -974,6 +974,7 @@ impl cosmic::Application for CosmicLauncher {
                         self.window_search = false;
                         self.alt_tab = false;
                         self.launcher_items = self.power_items();
+                        return self.show();
                     }
                     LauncherTasks::Combi => {
                         self.input_value.clear();
