@@ -527,8 +527,6 @@ impl cosmic::Application for CosmicLauncher {
             app.power_menu = true;
             app.launcher_items = app.power_items();
             app.surface_state = SurfaceState::WaitingToBeShown;
-            let show = app.show();
-            return (app, dummy.chain(show));
         }
         (app, dummy)
     }
@@ -809,6 +807,9 @@ impl cosmic::Application for CosmicLauncher {
             },
             Message::Layer(LayerEvent::Done, id) if self.dummy_id == Some(id) => {
                 self.dummy_id = None;
+                if self.power_menu && self.surface_state == SurfaceState::WaitingToBeShown {
+                    return self.show();
+                }
             }
             Message::Output(event) => {
                 if matches!(event, OutputEvent::Created(_) | OutputEvent::InfoUpdate(_))
