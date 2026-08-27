@@ -1,0 +1,7 @@
+(
+    name: "Power Actions",
+    description: "Power off, reboot, suspend, lock, or log out",
+    query: (regex: "^power .*", isolate: true),
+    bin: (path: "power_actions.py"),
+    icon: Name("system-shutdown"),
+)

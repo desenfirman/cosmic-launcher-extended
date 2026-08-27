@@ -51,7 +51,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::path::Path;
-use std::process::Command;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -166,8 +165,6 @@ pub struct CosmicLauncher {
     cursor_position: Option<Point<f32>>,
     focused: usize,
     window_search: bool,
-    power_menu: bool,
-    power_confirmation: Option<String>,
     last_hide: Instant,
     alt_tab: bool,
     alt_tab_released: bool,
@@ -280,8 +277,6 @@ impl CosmicLauncher {
         self.focused = 0;
         self.alt_tab = false;
         self.window_search = false;
-        self.power_menu = false;
-        self.power_confirmation = None;
         self.alt_tab_released = false;
         self.queue.clear();
         self.hand_over.clear();
@@ -363,91 +358,8 @@ impl CosmicLauncher {
             ..Default::default()
         }
     }
-    fn power_items(&self) -> Vec<SearchResult> {
-        let uptime = Command::new("uptime")
-            .arg("-p")
-            .output()
-            .ok()
-            .and_then(|output| String::from_utf8(output.stdout).ok())
-            .unwrap_or_else(|| "unknown".into())
-            .trim()
-            .strip_prefix("up ")
-            .unwrap_or("unknown")
-            .to_owned();
-        [
-            format!("Uptime: {uptime}"),
-            "Lock".into(),
-            "Suspend".into(),
-            "Logout".into(),
-            "Reboot".into(),
-            "Shutdown".into(),
-        ]
-        .into_iter()
-        .enumerate()
-        .map(|(id, name)| power_result(id as u32, name))
-        .collect()
-    }
 
-    fn activate_power(&mut self, i: usize) -> Task<Message> {
-        let Some(name) = self.launcher_items.get(i).map(|item| item.name.clone()) else {
-            return self.hide();
-        };
-        if name.starts_with("Uptime:") {
-            return Task::none();
-        }
-        if name == "Cancel" {
-            return self.hide();
-        }
-        if name == "Confirm" {
-            let Some(action) = self.power_confirmation.take() else {
-                return self.hide();
-            };
-            let (program, args): (&str, &[&str]) = match action.as_str() {
-                "Suspend" => ("systemctl", &["suspend"]),
-                "Logout" => ("loginctl", &["terminate-session"]),
-                "Reboot" => ("systemctl", &["reboot"]),
-                "Shutdown" => ("systemctl", &["poweroff"]),
-                _ => return self.hide(),
-            };
-            let mut command = Command::new(program);
-            if action == "Logout" {
-                if let Ok(session) = std::env::var("XDG_SESSION_ID") {
-                    command.arg(args[0]).arg(session);
-                }
-            } else {
-                command.args(args);
-            }
-            let _ = command.spawn();
-            return self.hide();
-        }
-        if name == "Lock" {
-            let _ = Command::new("loginctl")
-                .args(["lock-session", "self"])
-                .spawn();
-            return self.hide();
-        }
-        self.power_confirmation = Some(name);
-        self.launcher_items = ["Confirm", "Cancel"]
-            .into_iter()
-            .enumerate()
-            .map(|(id, name)| power_result(id as u32, name.to_owned()))
-            .collect();
-        self.focused = 0;
-        Task::none()
-    }
 }
-
-fn power_result(id: u32, name: String) -> SearchResult {
-    SearchResult {
-        id,
-        name,
-        description: String::new(),
-        icon: None,
-        category_icon: None,
-        window: None,
-    }
-}
-
 fn alt_tab_modifier_is_released(modifiers: Modifiers) -> bool {
     !modifiers.alt() && !modifiers.logo() && !modifiers.control()
 }
@@ -508,8 +420,6 @@ impl cosmic::Application for CosmicLauncher {
             last_hide: Instant::now(),
             alt_tab: false,
             window_search: false,
-            power_menu: false,
-            power_confirmation: None,
             alt_tab_released: false,
             window_id: SurfaceId::unique(),
             queue: VecDeque::new(),
@@ -523,11 +433,6 @@ impl cosmic::Application for CosmicLauncher {
         };
         let dummy = app.create_dummy_layer_surface();
         app.needs_clear = false;
-        if matches!(flags.subcommand, Some(LauncherTasks::Powermenu)) {
-            app.power_menu = true;
-            app.launcher_items = app.power_items();
-            app.surface_state = SurfaceState::WaitingToBeShown;
-        }
         (app, dummy)
     }
 
@@ -574,9 +479,6 @@ impl cosmic::Application for CosmicLauncher {
             }
             Message::Activate(i) => {
                 let index = i.unwrap_or(self.focused);
-                if self.power_menu {
-                    return self.activate_power(index);
-                }
                 let close_after_activate = self.alt_tab || self.window_search;
                 if let Some(item) = self.launcher_items.get(index) {
                     if self.window_search {
@@ -637,9 +539,6 @@ impl cosmic::Application for CosmicLauncher {
                 }
                 launcher::Event::Response(response) => match response {
                     pop_launcher::Response::Close => {
-                        if self.power_menu {
-                            return Task::none();
-                        }
                         return self.hide();
                     }
                     #[allow(clippy::cast_possible_truncation)]
@@ -712,9 +611,6 @@ impl cosmic::Application for CosmicLauncher {
                         }
                     }
                     pop_launcher::Response::Update(mut list) => {
-                        if self.power_menu {
-                            return Task::none();
-                        }
                         if self.window_search || self.alt_tab {
                             list.retain(|item| item.window.is_some());
                         } else {
@@ -807,9 +703,6 @@ impl cosmic::Application for CosmicLauncher {
             },
             Message::Layer(LayerEvent::Done, id) if self.dummy_id == Some(id) => {
                 self.dummy_id = None;
-                if self.power_menu && self.surface_state == SurfaceState::WaitingToBeShown {
-                    return self.show();
-                }
             }
             Message::Output(event) => {
                 if matches!(event, OutputEvent::Created(_) | OutputEvent::InfoUpdate(_))
@@ -975,19 +868,15 @@ impl cosmic::Application for CosmicLauncher {
                 }
                 match cmd {
                     LauncherTasks::Powermenu => {
-                        self.input_value.clear();
+                        self.input_value = "power ".into();
                         self.focused = 0;
-                        self.power_menu = true;
-                        self.power_confirmation = None;
                         self.window_search = false;
                         self.alt_tab = false;
-                        self.launcher_items = self.power_items();
-                        return self.show();
+                        self.request(launcher::Request::Search(self.input_value.clone()));
                     }
                     LauncherTasks::Combi => {
                         self.input_value.clear();
                         self.focused = 0;
-                        self.power_menu = false;
                         self.window_search = false;
                         self.alt_tab = false;
                         self.request(launcher::Request::Search(String::new()));
@@ -995,7 +884,6 @@ impl cosmic::Application for CosmicLauncher {
                     LauncherTasks::Windows | LauncherTasks::WindowSearch => {
                         self.input_value.clear();
                         self.focused = 0;
-                        self.power_menu = false;
                         self.window_search = true;
                         self.alt_tab = false;
                         self.request(launcher::Request::Search(String::new()));
@@ -1010,7 +898,6 @@ impl cosmic::Application for CosmicLauncher {
                             }
                             return self.update(Message::AltTab);
                         }
-                        self.power_menu = false;
                         self.alt_tab = true;
                         self.alt_tab_released = false;
                         self.request(launcher::Request::Search(String::new()));
@@ -1026,7 +913,6 @@ impl cosmic::Application for CosmicLauncher {
                             }
                             return self.update(Message::ShiftAltTab);
                         }
-                        self.power_menu = false;
                         self.alt_tab = true;
                         self.alt_tab_released = false;
                         self.request(launcher::Request::Search(String::new()));
@@ -1055,33 +941,21 @@ impl cosmic::Application for CosmicLauncher {
     #[allow(clippy::too_many_lines)]
     fn view_window(&self, id: SurfaceId) -> Element<'_, Self::Message> {
         if id == self.window_id {
-            let launcher_entry: Element<'_, Self::Message> = if self.power_menu {
-                container(text::body(
-                    self.launcher_items
-                        .first()
-                        .map(|item| item.name.clone())
-                        .unwrap_or_else(|| "Uptime: unknown".into()),
-                ))
-                .width(Length::Fill)
-                .into()
-            } else {
-                text_input::search_input(fl!("type-to-search"), &self.input_value)
-                    .on_input(Message::InputChanged)
-                    .on_paste(Message::InputChanged)
-                    .on_submit(|_| Message::Activate(None))
-                    .on_tab(Message::TabPress)
-                    .style(cosmic::theme::TextInput::Custom {
-                        active: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
-                        error: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
-                        hovered: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
-                        focused: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
-                        disabled: Box::new(|theme| theme.disabled(&cosmic::theme::TextInput::Search)),
-                    })
-                    .width(600.)
-                    .id(INPUT_ID.clone())
-                    .always_active()
-                    .into()
-            };
+            let launcher_entry = text_input::search_input(fl!("type-to-search"), &self.input_value)
+                .on_input(Message::InputChanged)
+                .on_paste(Message::InputChanged)
+                .on_submit(|_| Message::Activate(None))
+                .on_tab(Message::TabPress)
+                .style(cosmic::theme::TextInput::Custom {
+                    active: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
+                    error: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
+                    hovered: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
+                    focused: Box::new(|theme| theme.focused(&cosmic::theme::TextInput::Search)),
+                    disabled: Box::new(|theme| theme.disabled(&cosmic::theme::TextInput::Search)),
+                })
+                .width(600.)
+                .id(INPUT_ID.clone())
+                .always_active();
 
 
             let buttons: Vec<_> = self
