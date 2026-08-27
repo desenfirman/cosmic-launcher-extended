@@ -491,9 +491,8 @@ impl cosmic::Application for CosmicLauncher {
     const APP_ID: &'static str = "com.mis.CosmicLauncherExtended";
     type Flags = Args;
 
-    fn init(mut core: Core, _flags: Args) -> (Self, Task<Message>) {
+    fn init(mut core: Core, flags: Args) -> (Self, Task<Message>) {
         core.set_app_type(cosmic::core::AppType::System);
-
         core.set_keyboard_nav(false);
 
         let mut app = CosmicLauncher {
@@ -514,9 +513,7 @@ impl cosmic::Application for CosmicLauncher {
             alt_tab_released: false,
             window_id: SurfaceId::unique(),
             queue: VecDeque::new(),
-            result_ids: (0..10)
-                .map(|id| Id::new(id.to_string()))
-                .collect::<Vec<_>>(),
+            result_ids: (0..10).map(|id| Id::new(id.to_string())).collect(),
             margin: 0.,
             overlap: HashMap::new(),
             height: 800.,
@@ -524,9 +521,16 @@ impl cosmic::Application for CosmicLauncher {
             hand_over: String::default(),
             dummy_id: None,
         };
-        let task = app.create_dummy_layer_surface();
+        let dummy = app.create_dummy_layer_surface();
         app.needs_clear = false;
-        (app, task)
+        if matches!(flags.subcommand, Some(LauncherTasks::Powermenu)) {
+            app.power_menu = true;
+            app.launcher_items = app.power_items();
+            app.surface_state = SurfaceState::WaitingToBeShown;
+            let show = app.show();
+            return (app, dummy.chain(show));
+        }
+        (app, dummy)
     }
 
     fn core(&self) -> &Core {
