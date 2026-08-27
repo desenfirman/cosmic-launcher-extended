@@ -691,7 +691,12 @@ impl cosmic::Application for CosmicLauncher {
                         if self.alt_tab_released {
                             cmds.push(self.update(Message::Activate(None)));
                         } else if self.surface_state == SurfaceState::WaitingToBeShown {
-                            cmds.push(self.show());
+                            let show = self.show();
+                            if self.input_value == "power " {
+                                cmds.push(show.chain(text_input::move_cursor_to_end(INPUT_ID.clone())));
+                            } else {
+                                cmds.push(show);
+                            }
                         }
                         return Task::batch(cmds);
                     }
