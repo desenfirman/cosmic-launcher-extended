@@ -363,6 +363,9 @@ impl CosmicLauncher {
 fn alt_tab_modifier_is_released(modifiers: Modifiers) -> bool {
     !modifiers.alt() && !modifiers.logo() && !modifiers.control()
 }
+fn normalize_power_query(value: &str) -> String {
+    format!("power {}", value.replacen("power", "", 1).trim())
+}
 
 async fn launch(
     token: Option<String>,
@@ -448,13 +451,26 @@ impl cosmic::Application for CosmicLauncher {
     fn update(&mut self, message: Message) -> Task<Self::Message> {
         match message {
             Message::InputChanged(value) => {
-                self.input_value.clone_from(&value);
+                let value = if self.input_value.contains("power") || value.contains("power") {
+                    normalize_power_query(&value)
+                } else {
+                    value
+                };
+                let power = value.starts_with("power ");
+                self.input_value = value.clone();
                 self.focused = 0;
                 self.request(launcher::Request::Search(value));
-                return operation::snap_to(SCROLLABLE.clone(), RelativeOffset::START);
+                let mut tasks = vec![operation::snap_to(SCROLLABLE.clone(), RelativeOffset::START)];
+                if power {
+                    tasks.push(text_input::move_cursor_to_end(INPUT_ID.clone()));
+                }
+                return Task::batch(tasks);
             }
             Message::Backspace => {
                 self.input_value.pop();
+                if self.input_value.starts_with("power") {
+                    self.input_value = normalize_power_query(&self.input_value);
+                }
                 self.focused = 0;
                 self.request(launcher::Request::Search(self.input_value.clone()));
                 return operation::snap_to(SCROLLABLE.clone(), RelativeOffset::START);
