@@ -635,6 +635,9 @@ impl cosmic::Application for CosmicLauncher {
                 }
                 launcher::Event::Response(response) => match response {
                     pop_launcher::Response::Close => {
+                        if self.power_menu {
+                            return Task::none();
+                        }
                         return self.hide();
                     }
                     #[allow(clippy::cast_possible_truncation)]
