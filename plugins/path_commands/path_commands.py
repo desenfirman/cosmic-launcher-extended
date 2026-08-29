@@ -52,7 +52,7 @@ def main():
                 commands
                 if not query
                 else [command for command in commands if query in command[0].casefold()]
-            )
+            )[:100]
             for command_id, (name, path) in enumerate(current_results):
                 send(
                     {
