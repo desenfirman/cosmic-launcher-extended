@@ -165,6 +165,7 @@ pub struct CosmicLauncher {
     cursor_position: Option<Point<f32>>,
     focused: usize,
     window_search: bool,
+    power_menu: bool,
     last_hide: Instant,
     alt_tab: bool,
     alt_tab_released: bool,
@@ -277,7 +278,7 @@ impl CosmicLauncher {
         self.focused = 0;
         self.alt_tab = false;
         self.window_search = false;
-        self.alt_tab_released = false;
+        self.power_menu = false;
         self.queue.clear();
         self.hand_over.clear();
         self.request(launcher::Request::Close);
@@ -363,9 +364,6 @@ impl CosmicLauncher {
 fn alt_tab_modifier_is_released(modifiers: Modifiers) -> bool {
     !modifiers.alt() && !modifiers.logo() && !modifiers.control()
 }
-fn normalize_power_query(value: &str) -> String {
-    format!("power {}", value.replacen("power", "", 1).trim())
-}
 
 async fn launch(
     token: Option<String>,
@@ -423,6 +421,7 @@ impl cosmic::Application for CosmicLauncher {
             last_hide: Instant::now(),
             alt_tab: false,
             window_search: false,
+            power_menu: false,
             alt_tab_released: false,
             window_id: SurfaceId::unique(),
             queue: VecDeque::new(),
@@ -451,28 +450,25 @@ impl cosmic::Application for CosmicLauncher {
     fn update(&mut self, message: Message) -> Task<Self::Message> {
         match message {
             Message::InputChanged(value) => {
-                let value = if self.input_value.contains("power") || value.contains("power") {
-                    normalize_power_query(&value)
+                let query = if self.power_menu {
+                    format!("power {value}")
                 } else {
-                    value
+                    value.clone()
                 };
-                let power = value.starts_with("power ");
-                self.input_value = value.clone();
+                self.input_value = value;
                 self.focused = 0;
-                self.request(launcher::Request::Search(value));
-                let mut tasks = vec![operation::snap_to(SCROLLABLE.clone(), RelativeOffset::START)];
-                if power {
-                    tasks.push(text_input::move_cursor_to_end(INPUT_ID.clone()));
-                }
-                return Task::batch(tasks);
+                self.request(launcher::Request::Search(query));
+                return operation::snap_to(SCROLLABLE.clone(), RelativeOffset::START);
             }
             Message::Backspace => {
                 self.input_value.pop();
-                if self.input_value.starts_with("power") {
-                    self.input_value = normalize_power_query(&self.input_value);
-                }
+                let query = if self.power_menu {
+                    format!("power {}", self.input_value)
+                } else {
+                    self.input_value.clone()
+                };
                 self.focused = 0;
-                self.request(launcher::Request::Search(self.input_value.clone()));
+                self.request(launcher::Request::Search(query));
                 return operation::snap_to(SCROLLABLE.clone(), RelativeOffset::START);
             }
             Message::TabPress if !self.alt_tab => {
@@ -707,12 +703,7 @@ impl cosmic::Application for CosmicLauncher {
                         if self.alt_tab_released {
                             cmds.push(self.update(Message::Activate(None)));
                         } else if self.surface_state == SurfaceState::WaitingToBeShown {
-                            let show = self.show();
-                            if self.input_value == "power " {
-                                cmds.push(show.chain(text_input::move_cursor_to_end(INPUT_ID.clone())));
-                            } else {
-                                cmds.push(show);
-                            }
+                            cmds.push(self.show());
                         }
                         return Task::batch(cmds);
                     }
@@ -889,11 +880,12 @@ impl cosmic::Application for CosmicLauncher {
                 }
                 match cmd {
                     LauncherTasks::Powermenu => {
-                        self.input_value = "power ".into();
+                        self.input_value.clear();
                         self.focused = 0;
                         self.window_search = false;
                         self.alt_tab = false;
-                        self.request(launcher::Request::Search(self.input_value.clone()));
+                        self.power_menu = true;
+                        self.request(launcher::Request::Search("power ".into()));
                     }
                     LauncherTasks::Combi => {
                         self.input_value.clear();
