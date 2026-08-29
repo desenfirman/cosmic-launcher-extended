@@ -1,7 +1,8 @@
 (
     name: "PATH Commands",
     description: "Executable commands available on PATH",
-    query: (persistent: true),
+    query: (regex: ".+"),
     bin: (path: "path_commands.py"),
     icon: Name("utilities-terminal"),
+    long_lived: true,
 )

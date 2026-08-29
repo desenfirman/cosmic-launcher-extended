@@ -60,7 +60,6 @@ def main():
                             "id": command_id,
                             "name": name,
                             "description": path,
-                            "icon": {"Name": "utilities-terminal"},
                             "exec": path,
                         }
                     }
